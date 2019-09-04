@@ -6,6 +6,8 @@ setup(
     py_modules=['lifebase_ble_mqtt'],
     install_requires=[
         'Click',
+        'paho-mqtt',
+        'pygatt',
     ],
     entry_points='''
         [console_scripts]

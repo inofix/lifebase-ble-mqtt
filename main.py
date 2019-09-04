@@ -1,4 +1,6 @@
 import click
+import pygatt
+import paho.mqtt.client
 
 class Config(object):
     def __init__(self):
@@ -28,5 +30,8 @@ def scan(config):
 @pass_config
 def transport(config, brokerhost, brokerport):
     """Scan the BLE devices and send the data to the MQTT broker."""
-    pass
+    c = paho.mqtt.client.Client("LifeBase-BLE-MQTT")
+    c.connect(brokerhost)
+    for d in config.macs:
+        c.publish("foobar", d)
 
