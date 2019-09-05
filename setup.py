@@ -7,6 +7,7 @@ setup(
     install_requires=[
         'Click',
         'paho-mqtt',
+        'pexpect',
         'pygatt',
     ],
     entry_points='''
