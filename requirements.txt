@@ -1,0 +1,5 @@
+click
+paho-mqtt
+pexpect
+pygatt
+
