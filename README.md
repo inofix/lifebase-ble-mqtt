@@ -27,6 +27,10 @@ The following command sets the virtual environment up.
 
 `virtualenv venv`
 
+Note: as lifebase-ble-mqtt requires python version 3, depending on your operating system, you might have to specify that here.
+
+`virtualenv -p python3 venv`
+
 Now, whenever we want to work on a project, we only have to activate the corresponding environment
 
 `. venv/bin/activate`
@@ -55,7 +59,7 @@ The setup of the application is declared in `./setup.py`.
 To test the script we can make a new virtualenv and then install our package:
 
 ```
-virtualenv venv
+virtualenv -p python3 venv
 . venv/bin/activate
 pip install --editable .
 ```
