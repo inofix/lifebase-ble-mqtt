@@ -5,10 +5,11 @@ setup(
     version='0.1',
     py_modules=['lifebase_ble_mqtt'],
     install_requires=[
+        'asyncio',
+        'bleak',
         'Click',
         'paho-mqtt',
-        'pexpect',
-        'pygatt',
+        'service_identity',
     ],
     entry_points='''
         [console_scripts]
