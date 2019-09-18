@@ -6,6 +6,7 @@ setup(
     py_modules=['lifebase_ble_mqtt'],
     install_requires=[
         'asyncio',
+        'async_timeout',
         'bleak',
         'Click',
         'paho-mqtt',

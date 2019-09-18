@@ -1,8 +1,10 @@
 import click
 import logging
 import asyncio
+import async_timeout
 from bleak import discover as bleak_discover
 from bleak import BleakClient
+from bleak import BleakError
 import paho.mqtt.client
 
 device_name_default = 'LifeBaseMeter'
@@ -27,18 +29,21 @@ pass_config = click.make_pass_decorator(Config, ensure=True)
 
 @click.group()
 @click.option('-d', '--device', 'macs', help='The MAC address of the BLE interface to be scanned.', multiple=True)
+@click.option('-t', '--timeout', 'timeout', default=30, help='Do not wait longer than this amount of seconds for devices to answer')
 #@click.option('-c', '--characteristic', 'characteristic', help='The characteristic of interest to be read.', multiple=True)
 @pass_config
-def main(config, macs):
+def main(config, macs, timeout):
     """Scan BLE devices for LifeBase parameters and send them to a MQTT broker."""
     config.macs = macs
+    config.timeout = timeout
 
-async def run_discovery(lifebase_devices, device_name):
+async def run_discovery(lifebase_devices, device_name, timeout):
     """Scan for BLE devices but only consider those with a certain name."""
-    ds = await bleak_discover()
-    for d in ds:
-        if d.name == device_name:
-            lifebase_devices.append(d)
+    async with async_timeout.timeout(timeout):
+        ds = await bleak_discover()
+        for d in ds:
+            if d.name == device_name:
+                lifebase_devices.append(d)
 
 @main.command()
 @click.option('-n', '--device-name', 'device_name', default=device_name_default, help='The common name of LifeBaseMeter devices')
@@ -47,10 +52,15 @@ async def run_discovery(lifebase_devices, device_name):
 @pass_config
 def discover(config, device_name):
     """Scan the air for LifeBaseMeter devices and list them."""
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_discovery(lifebase_devices, device_name))
-    for d in lifebase_devices:
-        print(d)
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(run_discovery(lifebase_devices, device_name, config.timeout))
+        for d in lifebase_devices:
+            print(d)
+    except asyncio.TimeoutError:
+        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+    except BleakError:
+        print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
 @pass_config
@@ -59,17 +69,23 @@ def scan(config):
     for m in config.macs:
         click.echo('Scanning ' + m)
         d = LifeBaseMeter(m)
-        scan_services(d)
+        scan_services(d, config.timeout)
 #TODO
-        print("Services:", d.ble.services)
+#        print("Services:", d.ble.services)
 
-async def run_scan_services(lifebasemeter, loop):
-   async with BleakClient(lifebasemeter.mac, loop=loop) as c:
-        lifebasemeter.ble = await c.get_services()
+async def run_scan_services(lifebasemeter, loop, timeout):
+    async with async_timeout.timeout(timeout):
+        async with BleakClient(lifebasemeter.mac, loop=loop) as c:
+            lifebasemeter.ble = await c.get_services()
 
-def scan_services(lifebasemeter):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_scan_services(lifebasemeter, loop))
+def scan_services(lifebasemeter, timeout):
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
+    except asyncio.TimeoutError:
+        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+    except BleakError:
+        print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
 ##TODO: multiple broker support?
