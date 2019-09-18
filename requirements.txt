@@ -1,0 +1,6 @@
+asyncio
+bleak
+click
+paho-mqtt
+service_identity
+
