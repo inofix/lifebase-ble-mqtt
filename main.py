@@ -4,6 +4,7 @@ import asyncio
 import async_timeout
 from bleak import discover as bleak_discover
 from bleak import BleakClient
+from bleak import BleakError
 import paho.mqtt.client
 
 device_name_default = 'LifeBaseMeter'
@@ -51,10 +52,15 @@ async def run_discovery(lifebase_devices, device_name, timeout):
 @pass_config
 def discover(config, device_name):
     """Scan the air for LifeBaseMeter devices and list them."""
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_discovery(lifebase_devices, device_name, config.timeout))
-    for d in lifebase_devices:
-        print(d)
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(run_discovery(lifebase_devices, device_name, config.timeout))
+        for d in lifebase_devices:
+            print(d)
+    except asyncio.TimeoutError:
+        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+    except BleakError:
+        print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
 @pass_config
@@ -65,7 +71,7 @@ def scan(config):
         d = LifeBaseMeter(m)
         scan_services(d, config.timeout)
 #TODO
-        print("Services:", d.ble.services)
+#        print("Services:", d.ble.services)
 
 async def run_scan_services(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
@@ -73,8 +79,13 @@ async def run_scan_services(lifebasemeter, loop, timeout):
             lifebasemeter.ble = await c.get_services()
 
 def scan_services(lifebasemeter, timeout):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
+    except asyncio.TimeoutError:
+        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+    except BleakError:
+        print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
 ##TODO: multiple broker support?
