@@ -69,9 +69,16 @@ def scan(config):
     for m in config.macs:
         click.echo('Scanning ' + m)
         d = LifeBaseMeter(m)
+    try:
         scan_services(d, config.timeout)
-#TODO
-#        print("Services:", d.ble.services)
+        print("Services:", d.ble.services)
+        print("Characteristics:", d.ble.characteristics)
+    except asyncio.TimeoutError:
+        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+    except BleakError:
+        print("Error: There was a problem with the BLE connection. Please try again later.")
+    except Exception as e:
+        print(e)
 
 async def run_scan_services(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
@@ -79,13 +86,8 @@ async def run_scan_services(lifebasemeter, loop, timeout):
             lifebasemeter.ble = await c.get_services()
 
 def scan_services(lifebasemeter, timeout):
-    try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
-    except asyncio.TimeoutError:
-        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
-    except BleakError:
-        print("Error: There was a problem with the BLE connection. Please try again later.")
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
 
 @main.command()
 ##TODO: multiple broker support?
