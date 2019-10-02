@@ -103,7 +103,7 @@ async def run_discovery(lifebase_devices, device_name, timeout):
 
 @main.command()
 @click.option('-n', '--device-name', 'device_name', default=device_name_default, help='The common name of LifeBaseMeter devices')
-#@click.option('-w', '--well-known-uuids', 'wellknown', default=wellknown_default, help='The UUIDs of known LifeBase devices', multiple=True)
+#@click.option('-w', '--well-known-uuids', 'wellknown', default=wellknown_default, help='The UUID of a LifeBase device', multiple=True)
 #@click.option('-W', '--all-devices', 'all', default=False, help='Do not filter by well-known UUIDs')
 @pass_config
 def discover(config, device_name):
@@ -119,8 +119,11 @@ def discover(config, device_name):
         print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
+@click.option('-s', '--service-filter', 'servicefilter', default=None, help='The UUID of a service of interest', multiple=True)
+@click.option('-c', '--characteristic-filter', 'characteristicfilter', default=None, help='The UUID of a characteristic of interest', multiple=True)
+@click.option('-d', '--descriptor-filter', 'descriptorfilter', default=None, help='The UUID of a descriptor of interest', multiple=True)
 @pass_config
-def scan(config):
+def scan(config, servicefilter, characteristicfilter, descriptorfilter):
     """Scan BLE devices for LifeBase parameters."""
     for m in config.macs:
         click.echo('Scanning ' + m)
@@ -128,8 +131,12 @@ def scan(config):
     try:
         scan_services(d, config.timeout)
         for s in d.measurements.values():
+            if servicefilter and s.uuid not in servicefilter:
+                continue
             print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
             for ch in s.characteristics.values():
+                if characteristicfilter and ch.uuid not in characteristicfilter:
+                    continue
                 print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
                     ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
                 for de in ch.descriptors.values():
