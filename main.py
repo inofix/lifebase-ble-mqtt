@@ -19,6 +19,62 @@ class LifeBaseMeter(object):
     def __init__(self, mac):
         self.mac = mac
         self.ble = None
+        self.is_connected = False
+        self.measurements = {}
+
+class Service(object):
+    """Offline abstraction for a service"""
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.handle = None
+        self.description = ""
+        self.characteristics = {}
+    def set_handle_from_path(self, path):
+        self.handle = path.split('/')[5].replace('service', '0x')
+    def get_handle(self, as_hex=True):
+        """Return the BLE handle either in 'hex' or 'dec'"""
+        if as_hex:
+            return self.handle
+        else:
+            return int(h, 16)
+    def add_characteristic(self, characteristic):
+        self.characteristics[characteristic.uuid] = characteristic
+
+class Characteristic(object):
+    """Offline abstraction for a characteristic
+        aka measurement, in this context"""
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.handle = None
+        self.value = None
+        self.properties = []
+        self.description = None
+        self.descriptors = {}
+    def set_handle_from_path(self, path):
+        self.handle = path.split('/')[6].replace('char', '0x')
+    def get_handle(self, as_hex=True):
+        """Return the BLE handle either in 'hex' or 'dec'"""
+        if as_hex:
+            return self.handle
+        else:
+            return int(h, 16)
+    def add_descriptor(self, descriptor):
+        self.descriptors[descriptor.uuid] = descriptor
+
+class Descriptor(object):
+    """Offline abstraction for a descriptor"""
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.handle = None
+        self.description = ""
+    def set_handle(self, handle):
+        self.handle = hex(handle)
+    def get_handle(self, as_hex=True):
+        """Return the BLE handle either in 'hex' or 'dec'"""
+        if as_hex:
+            return self.handle
+        else:
+            return int(self.handle, 16)
 
 class Config(object):
     """Click CLI configuration"""
@@ -71,8 +127,9 @@ def scan(config):
         d = LifeBaseMeter(m)
     try:
         scan_services(d, config.timeout)
-        print("Services:", d.ble.services)
-        print("Characteristics:", d.ble.characteristics)
+        for s in d.ble.services:
+            print("Services:", d.ble.services)
+#            print("Characteristics:", d.ble.characteristics)
     except asyncio.TimeoutError:
         print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
@@ -81,9 +138,35 @@ def scan(config):
         print(e)
 
 async def run_scan_services(lifebasemeter, loop, timeout):
+#TODO add filters to skip elements on request..
     async with async_timeout.timeout(timeout):
         async with BleakClient(lifebasemeter.mac, loop=loop) as c:
             lifebasemeter.ble = await c.get_services()
+            lifebasemeter.is_connected = await c.is_connected()
+            for s in c.services:
+                service = Service(s.uuid)
+                lifebasemeter.measurements[s.uuid] = service
+                service.set_handle_from_path(s.path)
+                service.description = s.description
+                for ch in s.characteristics:
+                    characteristic = Characteristic(ch.uuid)
+                    service.characteristics[ch.uuid] = characteristic
+                    characteristic.set_handle_from_path(ch.path)
+                    characteristic.description = ch.description
+                    characteristic.properties = ch.properties
+                    if "read" in ch.properties:
+                        try:
+                            characteristic.value = bytes(await c.read_gatt_char(ch.uuid))
+                        except:
+                            characteristic.value = None
+                    for d in ch.descriptors:
+                        descriptor = Descriptor(d.uuid)
+                        characteristic.descriptors[d.uuid] = descriptor
+                        descriptor.set_handle(d.handle)
+                        try:
+                            descriptor.description = await c.read_gatt_descriptor(d.handle)
+                        except:
+                            descriptor.description = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
