@@ -127,9 +127,14 @@ def scan(config):
         d = LifeBaseMeter(m)
     try:
         scan_services(d, config.timeout)
-        for s in d.ble.services:
-            print("Services:", d.ble.services)
-#            print("Characteristics:", d.ble.characteristics)
+        for s in d.measurements.values():
+            print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
+            for ch in s.characteristics.values():
+                print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
+                    ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
+                for de in ch.descriptors.values():
+                    print("\t\t\t{0} ({1}): Value: {2}".format(
+                        de.uuid, de.handle, bytes(de.description)))
     except asyncio.TimeoutError:
         print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
