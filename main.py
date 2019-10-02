@@ -20,6 +20,9 @@ class LifeBaseMeter(object):
         self.mac = mac
         self.ble = None
         self.is_connected = False
+        self.servicefilter = None
+        self.characteristicfilter = None
+        self.descriptorfilter = None
         self.measurements = {}
 
 class Service(object):
@@ -128,15 +131,14 @@ def scan(config, servicefilter, characteristicfilter, descriptorfilter):
     for m in config.macs:
         click.echo('Scanning ' + m)
         d = LifeBaseMeter(m)
+        d.servicefilter = servicefilter
+        d.characteristicfilter = characteristicfilter
+        d.descriptorfilter = descriptorfilter
     try:
         scan_services(d, config.timeout)
         for s in d.measurements.values():
-            if servicefilter and s.uuid not in servicefilter:
-                continue
             print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
             for ch in s.characteristics.values():
-                if characteristicfilter and ch.uuid not in characteristicfilter:
-                    continue
                 print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
                     ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
                 for de in ch.descriptors.values():
@@ -156,11 +158,15 @@ async def run_scan_services(lifebasemeter, loop, timeout):
             lifebasemeter.ble = await c.get_services()
             lifebasemeter.is_connected = await c.is_connected()
             for s in c.services:
+                if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
+                    continue
                 service = Service(s.uuid)
                 lifebasemeter.measurements[s.uuid] = service
                 service.set_handle_from_path(s.path)
                 service.description = s.description
                 for ch in s.characteristics:
+                    if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
+                        continue
                     characteristic = Characteristic(ch.uuid)
                     service.characteristics[ch.uuid] = characteristic
                     characteristic.set_handle_from_path(ch.path)
@@ -172,6 +178,8 @@ async def run_scan_services(lifebasemeter, loop, timeout):
                         except:
                             characteristic.value = None
                     for d in ch.descriptors:
+                        if lifebasemeter.descriptorfilter and d.uuid not in lifebasemeter.descriptorfilter:
+                            continue
                         descriptor = Descriptor(d.uuid)
                         characteristic.descriptors[d.uuid] = descriptor
                         descriptor.set_handle(d.handle)
