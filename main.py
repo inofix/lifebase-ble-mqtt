@@ -23,7 +23,18 @@ class LifeBaseMeter(object):
         self.servicefilter = None
         self.characteristicfilter = None
         self.descriptorfilter = None
+        self.bleview = False
         self.measurements = {}
+
+class Measurement(object):
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.servicetype = None
+        self.sensortype = None
+        self.geo = [None, None]
+        self.now = None
+        self.value = None
+        self.unit = None
 
 class Service(object):
     """Offline abstraction for a service"""
@@ -122,28 +133,34 @@ def discover(config, device_name):
         print("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
+@click.option('-b/-B', '--ble-view/--no-ble-view', 'bleview', default=False, help='Display the results as seen on the BLE device')
 @click.option('-s', '--service-filter', 'servicefilter', default=None, help='The UUID of a service of interest', multiple=True)
 @click.option('-c', '--characteristic-filter', 'characteristicfilter', default=None, help='The UUID of a characteristic of interest', multiple=True)
 @click.option('-d', '--descriptor-filter', 'descriptorfilter', default=None, help='The UUID of a descriptor of interest', multiple=True)
 @pass_config
-def scan(config, servicefilter, characteristicfilter, descriptorfilter):
+def scan(config, bleview, servicefilter, characteristicfilter, descriptorfilter):
     """Scan BLE devices for LifeBase parameters."""
     for m in config.macs:
         click.echo('Scanning ' + m)
-        d = LifeBaseMeter(m)
-        d.servicefilter = servicefilter
-        d.characteristicfilter = characteristicfilter
-        d.descriptorfilter = descriptorfilter
+        lifebasemeter = LifeBaseMeter(m)
+        lifebasemeter.bleview = bleview
+        lifebasemeter.servicefilter = servicefilter
+        lifebasemeter.characteristicfilter = characteristicfilter
+        lifebasemeter.descriptorfilter = descriptorfilter
     try:
-        scan_services(d, config.timeout)
-        for s in d.measurements.values():
-            print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
-            for ch in s.characteristics.values():
-                print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
-                    ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
-                for de in ch.descriptors.values():
-                    print("\t\t\t{0} ({1}): Value: {2}".format(
-                        de.uuid, de.handle, bytes(de.description)))
+        scan_services(lifebasemeter, config.timeout)
+        if lifebasemeter.bleview:
+            if lifebasemeter.bleview:
+                for s in lifebasemeter.measurements.values():
+                    print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
+                    for ch in s.characteristics.values():
+                        print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
+                            ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
+                        for d in ch.descriptors.values():
+                            print("\t\t\t{0} ({1}): Value: {2}".format(
+                                d.uuid, d.handle, bytes(d.description)))
+        else:
+            pass
     except asyncio.TimeoutError:
         print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
@@ -160,33 +177,39 @@ async def run_scan_services(lifebasemeter, loop, timeout):
             for s in c.services:
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
-                service = Service(s.uuid)
-                lifebasemeter.measurements[s.uuid] = service
-                service.set_handle_from_path(s.path)
-                service.description = s.description
+                if lifebasemeter.bleview:
+                    service = Service(s.uuid)
+                    lifebasemeter.measurements[s.uuid] = service
+                    service.set_handle_from_path(s.path)
+                    service.description = s.description
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
-                    characteristic = Characteristic(ch.uuid)
-                    service.characteristics[ch.uuid] = characteristic
-                    characteristic.set_handle_from_path(ch.path)
-                    characteristic.description = ch.description
-                    characteristic.properties = ch.properties
+                    if lifebasemeter.bleview:
+                        char_meas = Characteristic(ch.uuid)
+                        service.characteristics[ch.uuid] = char_meas
+                        char_meas.set_handle_from_path(ch.path)
+                        char_meas.description = ch.description
+                        char_meas.properties = ch.properties
+                    else:
+                        char_meas = Measurement(ch.uuid)
+                        char_meas.servicetype = s.uuid
                     if "read" in ch.properties:
                         try:
-                            characteristic.value = bytes(await c.read_gatt_char(ch.uuid))
+                            char_meas.value = bytes(await c.read_gatt_char(ch.uuid))
                         except:
-                            characteristic.value = None
+                            char_meas.value = None
                     for d in ch.descriptors:
                         if lifebasemeter.descriptorfilter and d.uuid not in lifebasemeter.descriptorfilter:
                             continue
-                        descriptor = Descriptor(d.uuid)
-                        characteristic.descriptors[d.uuid] = descriptor
-                        descriptor.set_handle(d.handle)
-                        try:
-                            descriptor.description = await c.read_gatt_descriptor(d.handle)
-                        except:
-                            descriptor.description = None
+                        if lifebasemeter.bleview:
+                            descriptor = Descriptor(d.uuid)
+                            char_meas.descriptors[d.uuid] = descriptor
+                            descriptor.set_handle(d.handle)
+                            try:
+                                descriptor.description = await c.read_gatt_descriptor(d.handle)
+                            except:
+                                descriptor.description = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
