@@ -29,6 +29,7 @@ class LifeBaseMeter(object):
 class Measurement(object):
     def __init__(self, uuid):
         self.uuid = uuid
+        self.service = None
         self.servicetype = None
         self.sensortype = None
         self.geo = [None, None]
@@ -98,12 +99,14 @@ class Config(object):
 pass_config = click.make_pass_decorator(Config, ensure=True)
 
 @click.group()
-@click.option('-d', '--device', 'macs', help='The MAC address of the BLE interface to be scanned.', multiple=True)
-@click.option('-t', '--timeout', 'timeout', default=30, help='Do not wait longer than this amount of seconds for devices to answer')
-#@click.option('-c', '--characteristic', 'characteristic', help='The characteristic of interest to be read.', multiple=True)
+@click.option('-d', '--device', 'macs', multiple=True,
+    help='The MAC address of the BLE interface to be scanned.')
+@click.option('-t', '--timeout', 'timeout', default=30, help=
+    'Do not wait longer than this amount of seconds for devices to answer')
 @pass_config
 def main(config, macs, timeout):
-    """Scan BLE devices for LifeBase parameters and send them to a MQTT broker."""
+    """Scan BLE devices for LifeBase parameters and send them
+        to a MQTT broker."""
     config.macs = macs
     config.timeout = timeout
 
@@ -116,29 +119,41 @@ async def run_discovery(lifebase_devices, device_name, timeout):
                 lifebase_devices.append(d)
 
 @main.command()
-@click.option('-n', '--device-name', 'device_name', default=device_name_default, help='The common name of LifeBaseMeter devices')
-#@click.option('-w', '--well-known-uuids', 'wellknown', default=wellknown_default, help='The UUID of a LifeBase device', multiple=True)
-#@click.option('-W', '--all-devices', 'all', default=False, help='Do not filter by well-known UUIDs')
+@click.option('-n', '--device-name', 'device_name',
+    default=device_name_default,
+    help='The common name of LifeBaseMeter devices')
+#@click.option('-w', '--well-known-uuids', 'wellknown',
+#  default=wellknown_default, help='The UUID of a LifeBase device',
+#  multiple=True)
+#@click.option('-W', '--all-devices', 'all', default=False,
+#  help='Do not filter by well-known UUIDs')
 @pass_config
 def discover(config, device_name):
     """Scan the air for LifeBaseMeter devices and list them."""
     try:
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_discovery(lifebase_devices, device_name, config.timeout))
+        loop.run_until_complete(run_discovery(lifebase_devices, device_name,
+            config.timeout))
         for d in lifebase_devices:
-            print(d)
+            click.echo(d)
     except asyncio.TimeoutError:
-        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+        click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
-        print("Error: There was a problem with the BLE connection. Please try again later.")
+        click.echo("Error: There was a problem with the BLE connection. Please try again later.")
 
 @main.command()
-@click.option('-b/-B', '--ble-view/--no-ble-view', 'bleview', default=False, help='Display the results as seen on the BLE device')
-@click.option('-s', '--service-filter', 'servicefilter', default=None, help='The UUID of a service of interest', multiple=True)
-@click.option('-c', '--characteristic-filter', 'characteristicfilter', default=None, help='The UUID of a characteristic of interest', multiple=True)
-@click.option('-d', '--descriptor-filter', 'descriptorfilter', default=None, help='The UUID of a descriptor of interest', multiple=True)
+@click.option('-b/-B', '--ble-view/--no-ble-view', 'bleview',
+    default=False, help='Display the results as seen on the BLE device')
+@click.option('-s', '--service-filter', 'servicefilter', default=None,
+    help='The UUID of a service of interest', multiple=True)
+@click.option('-c', '--characteristic-filter', 'characteristicfilter',
+    default=None, help='The UUID of a characteristic of interest',
+    multiple=True)
+@click.option('-d', '--descriptor-filter', 'descriptorfilter', default=None,
+    help='The UUID of a descriptor of interest', multiple=True)
 @pass_config
-def scan(config, bleview, servicefilter, characteristicfilter, descriptorfilter):
+def scan(config, bleview, servicefilter, characteristicfilter,
+    descriptorfilter):
     """Scan BLE devices for LifeBase parameters."""
     for m in config.macs:
         click.echo('Scanning ' + m)
@@ -150,23 +165,28 @@ def scan(config, bleview, servicefilter, characteristicfilter, descriptorfilter)
     try:
         scan_services(lifebasemeter, config.timeout)
         if lifebasemeter.bleview:
-            if lifebasemeter.bleview:
-                for s in lifebasemeter.measurements.values():
-                    print("\t{0} ({1}): {2}".format(s.uuid, s.handle, s.description))
-                    for ch in s.characteristics.values():
-                        print("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".format(
-                            ch.uuid, ch.handle, "|".join(ch.properties), ch.description, ch.value))
-                        for d in ch.descriptors.values():
-                            print("\t\t\t{0} ({1}): Value: {2}".format(
-                                d.uuid, d.handle, bytes(d.description)))
+            for s in lifebasemeter.measurements.values():
+                click.echo("\t{0} ({1}): {2}".format(s.uuid, s.handle,
+                    s.description))
+                for ch in s.characteristics.values():
+                    click.echo("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".
+                        format(ch.uuid, ch.handle, "|".join(ch.properties),
+                        ch.description, ch.value))
+                    for d in ch.descriptors.values():
+                        click.echo("\t\t\t{0} ({1}): Value: {2}".format(
+                            d.uuid, d.handle, bytes(d.description)))
         else:
-            pass
+            for m in lifebasemeter.measurements.values():
+                click.echo("{" +
+                    "timestamp: {0}, lat: {1}, long: {2}, service: {3}, servicetype: {4}, uuid: {5}, sensortype: {6}, value: {7}, unit: {8}"
+                    .format("now", m.geo[0], m.geo[1], m.service, m.servicetype,
+                    m.uuid, m.sensortype, m.value, m.unit) + "}")
     except asyncio.TimeoutError:
-        print("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+        click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
-        print("Error: There was a problem with the BLE connection. Please try again later.")
+        click.echo("Error: There was a problem with the BLE connection. Please try again later.")
     except Exception as e:
-        print(e)
+        click.echo(e)
 
 async def run_scan_services(lifebasemeter, loop, timeout):
 #TODO add filters to skip elements on request..
@@ -193,10 +213,12 @@ async def run_scan_services(lifebasemeter, loop, timeout):
                         char_meas.properties = ch.properties
                     else:
                         char_meas = Measurement(ch.uuid)
-                        char_meas.servicetype = s.uuid
+                        lifebasemeter.measurements[ch.uuid] = char_meas
+                        char_meas.service = s.uuid
                     if "read" in ch.properties:
                         try:
-                            char_meas.value = bytes(await c.read_gatt_char(ch.uuid))
+                            char_meas.value = bytes(await c.read_gatt_char(
+                                ch.uuid))
                         except:
                             char_meas.value = None
                     for d in ch.descriptors:
@@ -218,8 +240,10 @@ def scan_services(lifebasemeter, timeout):
 @main.command()
 ##TODO: multiple broker support?
 ##TODO: certs, credentials, etc.
-@click.option('-h', '--hostname', 'brokerhost', default=None, help='The MQTT broker hostname to send the data to.')
-@click.option('-p', '--port', 'brokerport', default=None, help='The MQTT broker port to send the data to.')
+@click.option('-h', '--hostname', 'brokerhost', default=None,
+    help='The MQTT broker hostname to send the data to.')
+@click.option('-p', '--port', 'brokerport', default=None,
+    help='The MQTT broker port to send the data to.')
 @pass_config
 def transport(config, brokerhost, brokerport):
     """Scan the BLE devices and send the data to the MQTT broker."""
