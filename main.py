@@ -236,7 +236,7 @@ async def run_scan_services_bleview(lifebasemeter, loop, timeout):
                     cc.properties = ch.properties
                     if "read" in ch.properties:
                         try:
-                            cc.value = bytes(ch.obj.get("Value"))
+                            cc.value = bytes(await client.read_gatt_char(ch.uuid))
                         except:
                             cc.value = None
                     for d in ch.descriptors:
@@ -273,7 +273,7 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
                     m.timestamp = int(time.time())
                     if "read" in ch.properties:
                         try:
-                            m.value = float(bytes(ch.obj.get("Value")))
+                            m.value = float(bytes(await client.read_gatt_char(ch.uuid)))
                         except:
                             m.value = None
 
