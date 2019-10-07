@@ -1,11 +1,12 @@
-import click
-import logging
 import asyncio
 import async_timeout
+import click
+import logging
+import paho.mqtt.client
+import time
 from bleak import discover as bleak_discover
 from bleak import BleakClient
 from bleak import BleakError
-import paho.mqtt.client
 
 device_name_default = 'LifeBaseMeter'
 #TODO also check for known uuids?
@@ -179,7 +180,7 @@ def scan(config, bleview, servicefilter, characteristicfilter,
             for m in lifebasemeter.measurements.values():
                 click.echo("{" +
                     "timestamp: {0}, lat: {1}, long: {2}, service: {3}, servicetype: {4}, uuid: {5}, sensortype: {6}, value: {7}, unit: {8}"
-                    .format("now", m.geo[0], m.geo[1], m.service, m.servicetype,
+                    .format(m.timestamp, m.geo[0], m.geo[1], m.service, m.servicetype,
                     m.uuid, m.sensortype, m.value, m.unit) + "}")
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
@@ -215,6 +216,7 @@ async def run_scan_services(lifebasemeter, loop, timeout):
                         char_meas = Measurement(ch.uuid)
                         lifebasemeter.measurements[ch.uuid] = char_meas
                         char_meas.service = s.uuid
+                        char_meas.timestamp = int(time.time())
                     if "read" in ch.properties:
                         try:
                             char_meas.value = bytes(await c.read_gatt_char(
