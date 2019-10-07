@@ -21,19 +21,36 @@ class LifeBaseMeter(object):
         self.mac = mac
         self.ble = None
         self.is_connected = False
+        self.subject_uuid = None
         self.servicefilter = None
         self.characteristicfilter = None
         self.descriptorfilter = None
         self.bleview = False
         self.measurements = {}
 
+#TODO: read those in from a config file or some other central source
+LifeBaseMeter.subject_uuids = {
+    "__init__": "54000000-e337-46ca-9690-cdd6d309e7b1",
+    "subject_name": "54000001-e337-46ca-9690-cdd6d309e7b1",
+    "subject_uuid": "54000002-e337-46ca-9690-cdd6d309e7b1",
+    "type_name": "54000003-e337-46ca-9690-cdd6d309e7b1",
+    "type_uuid": "54000004-e337-46ca-9690-cdd6d309e7b1"
+}
+
+#TODO: read those in from a config file or some other central source
+#TODO: and probably move it further down the line towards the frontend
+LifeBaseMeter.measuremnt_uuids = {
+}
+
 class Measurement(object):
     def __init__(self, uuid):
         self.uuid = uuid
         self.subject = None
+        self.subjecttype = None
         self.service = None
         self.servicetype = None
         self.sensortype = None
+        self.timestamp = None
         self.geo = [None, None]
         self.now = None
         self.value = None
@@ -180,8 +197,9 @@ def scan(config, bleview, servicefilter, characteristicfilter,
         else:
             for m in lifebasemeter.measurements.values():
                 click.echo("{" +
-                    "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, service: {4}, servicetype: {5}, uuid: {6}, sensortype: {7}, value: {8}, unit: {9}"
-                    .format(m.timestamp, m.geo[0], m.geo[1], m.subject, m.service, m.servicetype,
+                    "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, subjecttype: {4}, service: {5}, servicetype: {6}, measurmentuuid: {7}, sensortype: {8}, value: {9}, unit: {10}"
+                    .format(m.timestamp, m.geo[0], m.geo[1], m.subject,
+                    m.subjecttype, m.service, m.servicetype,
                     m.uuid, m.sensortype, m.value, m.unit) + "}")
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
@@ -193,10 +211,15 @@ def scan(config, bleview, servicefilter, characteristicfilter,
 async def run_scan_services(lifebasemeter, loop, timeout):
 #TODO add filters to skip elements on request..
     async with async_timeout.timeout(timeout):
-        async with BleakClient(lifebasemeter.mac, loop=loop) as c:
-            lifebasemeter.ble = await c.get_services()
-            lifebasemeter.is_connected = await c.is_connected()
-            for s in c.services:
+        async with BleakClient(lifebasemeter.mac, loop=loop) as client:
+            lifebasemeter.ble = await client.get_services()
+            if not lifebasemeter.bleview:
+                subject = lifebasemeter.ble.services.pop(LifeBaseMeter.subject_uuids["__init__"])
+                for c in subject.characteristics:
+                    if c.uuid == LifeBaseMeter.subject_uuids["subject_uuid"]:
+#                        lifebasemeter.subject_uuid = bytes(await client.read_gatt_char(c.uuid))
+                        lifebasemeter.subject_uuid = bytes(c.obj.get("Value")).decode("utf-8")
+            for s in lifebasemeter.ble.services.values():
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
                 if lifebasemeter.bleview:
@@ -216,12 +239,12 @@ async def run_scan_services(lifebasemeter, loop, timeout):
                     else:
                         char_meas = Measurement(ch.uuid)
                         lifebasemeter.measurements[ch.uuid] = char_meas
+                        char_meas.subject = lifebasemeter.subject_uuid
                         char_meas.service = s.uuid
                         char_meas.timestamp = int(time.time())
                     if "read" in ch.properties:
                         try:
-                            char_meas.value = bytes(await c.read_gatt_char(
-                                ch.uuid))
+                            char_meas.value = bytes(ch.obj.get("Value")).decode("utf-8")
                         except:
                             char_meas.value = None
                     for d in ch.descriptors:
@@ -232,7 +255,7 @@ async def run_scan_services(lifebasemeter, loop, timeout):
                             char_meas.descriptors[d.uuid] = descriptor
                             descriptor.set_handle(d.handle)
                             try:
-                                descriptor.description = await c.read_gatt_descriptor(d.handle)
+                                descriptor.description = await client.read_gatt_descriptor(d.handle)
                             except:
                                 descriptor.description = None
 
