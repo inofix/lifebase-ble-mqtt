@@ -184,28 +184,28 @@ def scan(config, bleview, servicefilter, characteristicfilter,
         lifebasemeter.servicefilter = servicefilter
         lifebasemeter.characteristicfilter = characteristicfilter
         lifebasemeter.descriptorfilter = descriptorfilter
-    try:
-        scan_services(lifebasemeter, config.timeout)
-        if lifebasemeter.bleview:
-            for s in lifebasemeter.measurements.values():
-                click.echo("\t{0} ({1}): {2}".format(s.uuid, s.handle,
-                    s.description))
-                for ch in s.characteristics.values():
-                    click.echo("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".
-                        format(ch.uuid, ch.handle, "|".join(ch.properties),
-                        ch.description, ch.value))
-                    for d in ch.descriptors.values():
-                        click.echo("\t\t\t{0} ({1}): Value: {2}".format(
-                            d.uuid, d.handle, bytes(d.description)))
-        else:
-            for m in lifebasemeter.measurements.values():
-                click.echo(format_measurement(m))
-    except asyncio.TimeoutError:
-        click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
-    except BleakError:
-        click.echo("Error: There was a problem with the BLE connection. Please try again later.")
-    except Exception as e:
-        click.echo(e)
+        try:
+            scan_services(lifebasemeter, config.timeout)
+            if lifebasemeter.bleview:
+                for s in lifebasemeter.measurements.values():
+                    click.echo("\t{0} ({1}): {2}".format(s.uuid, s.handle,
+                            s.description))
+                    for ch in s.characteristics.values():
+                        click.echo("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".
+                            format(ch.uuid, ch.handle, "|".join(ch.properties),
+                            ch.description, ch.value))
+                        for d in ch.descriptors.values():
+                            click.echo("\t\t\t{0} ({1}): Value: {2}".format(
+                                d.uuid, d.handle, bytes(d.description)))
+            else:
+                for m in lifebasemeter.measurements.values():
+                    click.echo(format_measurement(m))
+        except asyncio.TimeoutError:
+            click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
+        except BleakError:
+            click.echo("Error: There was a problem with the BLE connection. Please try again later.")
+        except Exception as e:
+            click.echo(e)
 
 def format_measurement(measurement):
     return "{" + "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, subjecttype: {4}, service: {5}, servicetype: {6}, measurmentuuid: {7}, sensortype: {8}, value: {9}, unit: {10}".format(
