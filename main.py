@@ -309,7 +309,8 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
     try:
         scan_services(lifebasemeter, config.timeout)
 
-        c.publish(LifeBaseMeter.device_name, m)
+        for mm in lifebasemeter.measurements.values():
+            c.publish(LifeBaseMeter.device_name, format_measurement(mm))
     except asyncio.TimeoutError:
         click.echo("Timeout Error for device: " + m)
     except BleakError:
