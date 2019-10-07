@@ -283,15 +283,34 @@ def scan_services(lifebasemeter, timeout):
 @main.command()
 ##TODO: multiple broker support?
 ##TODO: certs, credentials, etc.
-@click.option('-h', '--hostname', 'brokerhost', default=None,
+@click.option('-h', '--hostname', 'brokerhost', default='127.0.0.1',
     help='The MQTT broker hostname to send the data to.')
 @click.option('-p', '--port', 'brokerport', default=None,
     help='The MQTT broker port to send the data to.')
+@click.option('-s', '--service-filter', 'servicefilter', default=None,
+    help='The UUID of a service of interest', multiple=True)
+@click.option('-c', '--characteristic-filter', 'characteristicfilter',
+    default=None, help='The UUID of a characteristic of interest',
+    multiple=True)
 @pass_config
-def transport(config, brokerhost, brokerport):
+def interconnect(config, servicefilter, characteristicfilter, brokerhost, brokerport):
     """Scan the BLE devices and send the data to the MQTT broker."""
     c = paho.mqtt.client.Client("LifeBase-BLE-MQTT")
     c.connect(brokerhost)
-    for d in config.macs:
-        c.publish("LifeBaseMeter", d)
+    for m in config.macs:
+        click.echo('Scanning ' + m)
+        lifebasemeter = LifeBaseMeter(m)
+        lifebasemeter.servicefilter = servicefilter
+        lifebasemeter.characteristicfilter = characteristicfilter
+    try:
+        scan_services(lifebasemeter, config.timeout)
+
+        c.publish(LifeBaseMeter.device_name, m)
+    except asyncio.TimeoutError:
+        click.echo("Timeout Error for device: " + m)
+    except BleakError:
+        click.echo("BLE Connection Error: " + m)
+    except Exception as e:
+        click.echo(e)
+
 
