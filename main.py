@@ -300,7 +300,6 @@ def scan_services(lifebasemeter, timeout):
 def interconnect(config, servicefilter, characteristicfilter, brokerhost, brokerport):
     """Scan the BLE devices and send the data to the MQTT broker."""
     c = paho.mqtt.client.Client("LifeBase-BLE-MQTT")
-    c.connect(brokerhost)
     for m in config.macs:
         click.echo('Scanning ' + m)
         lifebasemeter = LifeBaseMeter(m)
@@ -315,6 +314,7 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
         except Exception as e:
             click.echo(e)
         for mm in lifebasemeter.measurements.values():
+            c.connect(brokerhost)
             c.publish(LifeBaseMeter.device_name, format_measurement(mm))
 
 
