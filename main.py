@@ -306,16 +306,15 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
         lifebasemeter = LifeBaseMeter(m)
         lifebasemeter.servicefilter = servicefilter
         lifebasemeter.characteristicfilter = characteristicfilter
-    try:
-        scan_services(lifebasemeter, config.timeout)
-
+        try:
+            scan_services(lifebasemeter, config.timeout)
+        except asyncio.TimeoutError:
+            click.echo("Timeout Error for device: " + m)
+        except BleakError:
+            click.echo("BLE Connection Error: " + m)
+        except Exception as e:
+            click.echo(e)
         for mm in lifebasemeter.measurements.values():
             c.publish(LifeBaseMeter.device_name, format_measurement(mm))
-    except asyncio.TimeoutError:
-        click.echo("Timeout Error for device: " + m)
-    except BleakError:
-        click.echo("BLE Connection Error: " + m)
-    except Exception as e:
-        click.echo(e)
 
 
