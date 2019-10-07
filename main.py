@@ -208,60 +208,72 @@ def scan(config, bleview, servicefilter, characteristicfilter,
     except Exception as e:
         click.echo(e)
 
-async def run_scan_services(lifebasemeter, loop, timeout):
-#TODO add filters to skip elements on request..
+async def run_scan_services_bleview(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
         async with BleakClient(lifebasemeter.mac, loop=loop) as client:
             lifebasemeter.ble = await client.get_services()
-            if not lifebasemeter.bleview:
-                subject = lifebasemeter.ble.services.pop(LifeBaseMeter.subject_uuids["__init__"])
-                for c in subject.characteristics:
-                    if c.uuid == LifeBaseMeter.subject_uuids["subject_uuid"]:
-#                        lifebasemeter.subject_uuid = bytes(await client.read_gatt_char(c.uuid))
-                        lifebasemeter.subject_uuid = bytes(c.obj.get("Value")).decode("utf-8")
             for s in lifebasemeter.ble.services.values():
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
-                if lifebasemeter.bleview:
-                    service = Service(s.uuid)
-                    lifebasemeter.measurements[s.uuid] = service
-                    service.set_handle_from_path(s.path)
-                    service.description = s.description
+                service = Service(s.uuid)
+                lifebasemeter.measurements[s.uuid] = service
+                service.set_handle_from_path(s.path)
+                service.description = s.description
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
-                    if lifebasemeter.bleview:
-                        char_meas = Characteristic(ch.uuid)
-                        service.characteristics[ch.uuid] = char_meas
-                        char_meas.set_handle_from_path(ch.path)
-                        char_meas.description = ch.description
-                        char_meas.properties = ch.properties
-                    else:
-                        char_meas = Measurement(ch.uuid)
-                        lifebasemeter.measurements[ch.uuid] = char_meas
-                        char_meas.subject = lifebasemeter.subject_uuid
-                        char_meas.service = s.uuid
-                        char_meas.timestamp = int(time.time())
+                    cc = Characteristic(ch.uuid)
+                    service.characteristics[ch.uuid] = cc
+                    cc.set_handle_from_path(ch.path)
+                    cc.description = ch.description
+                    cc.properties = ch.properties
                     if "read" in ch.properties:
                         try:
-                            char_meas.value = bytes(ch.obj.get("Value")).decode("utf-8")
+                            cc.value = bytes(ch.obj.get("Value")).decode("utf-8")
                         except:
-                            char_meas.value = None
+                            cc.value = None
                     for d in ch.descriptors:
                         if lifebasemeter.descriptorfilter and d.uuid not in lifebasemeter.descriptorfilter:
                             continue
-                        if lifebasemeter.bleview:
-                            descriptor = Descriptor(d.uuid)
-                            char_meas.descriptors[d.uuid] = descriptor
-                            descriptor.set_handle(d.handle)
-                            try:
-                                descriptor.description = await client.read_gatt_descriptor(d.handle)
-                            except:
-                                descriptor.description = None
+                        descriptor = Descriptor(d.uuid)
+                        cc.descriptors[d.uuid] = descriptor
+                        descriptor.set_handle(d.handle)
+                        try:
+                            descriptor.description = await client.read_gatt_descriptor(d.handle)
+                        except:
+                            descriptor.description = None
+
+async def run_scan_services_measurments(lifebasemeter, loop, timeout):
+    async with async_timeout.timeout(timeout):
+        async with BleakClient(lifebasemeter.mac, loop=loop) as client:
+            lifebasemeter.ble = await client.get_services()
+            subject = lifebasemeter.ble.services.pop(LifeBaseMeter.subject_uuids["__init__"])
+            for c in subject.characteristics:
+                if c.uuid == LifeBaseMeter.subject_uuids["subject_uuid"]:
+                    lifebasemeter.subject_uuid = bytes(c.obj.get("Value")).decode("utf-8")
+            for s in lifebasemeter.ble.services.values():
+                if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
+                    continue
+                for ch in s.characteristics:
+                    if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
+                        continue
+                    m = Measurement(ch.uuid)
+                    lifebasemeter.measurements[ch.uuid] = m
+                    m.subject = lifebasemeter.subject_uuid
+                    m.service = s.uuid
+                    m.timestamp = int(time.time())
+                    if "read" in ch.properties:
+                        try:
+                            m.value = bytes(ch.obj.get("Value")).decode("utf-8")
+                        except:
+                            m.value = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_scan_services(lifebasemeter, loop, timeout))
+    if lifebasemeter.bleview:
+        loop.run_until_complete(run_scan_services_bleview(lifebasemeter, loop, timeout))
+    else:
+        loop.run_until_complete(run_scan_services_measurments(lifebasemeter, loop, timeout))
 
 @main.command()
 ##TODO: multiple broker support?
