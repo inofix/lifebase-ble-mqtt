@@ -30,6 +30,7 @@ class LifeBaseMeter(object):
 class Measurement(object):
     def __init__(self, uuid):
         self.uuid = uuid
+        self.subject = None
         self.service = None
         self.servicetype = None
         self.sensortype = None
@@ -179,8 +180,8 @@ def scan(config, bleview, servicefilter, characteristicfilter,
         else:
             for m in lifebasemeter.measurements.values():
                 click.echo("{" +
-                    "timestamp: {0}, lat: {1}, long: {2}, service: {3}, servicetype: {4}, uuid: {5}, sensortype: {6}, value: {7}, unit: {8}"
-                    .format(m.timestamp, m.geo[0], m.geo[1], m.service, m.servicetype,
+                    "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, service: {4}, servicetype: {5}, uuid: {6}, sensortype: {7}, value: {8}, unit: {9}"
+                    .format(m.timestamp, m.geo[0], m.geo[1], m.subject, m.service, m.servicetype,
                     m.uuid, m.sensortype, m.value, m.unit) + "}")
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
