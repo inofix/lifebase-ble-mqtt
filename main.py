@@ -8,10 +8,6 @@ from bleak import discover as bleak_discover
 from bleak import BleakClient
 from bleak import BleakError
 
-device_name_default = 'LifeBaseMeter'
-#TODO also check for known uuids?
-#wellknown_default = [ 'e9979b5f-c2c7-45f6-8377-7c94e0b1a7e4' ]
-
 # store all available BLE devices (LifeBaseMeter objects) in here
 lifebase_devices = []
 
@@ -27,6 +23,8 @@ class LifeBaseMeter(object):
         self.descriptorfilter = None
         self.bleview = False
         self.measurements = {}
+
+LifeBaseMeter.device_name = 'LifeBaseMeter'
 
 #TODO: read those in from a config file or some other central source
 LifeBaseMeter.subject_uuids = {
@@ -143,7 +141,7 @@ async def run_discovery(lifebase_devices, device_name, timeout):
 
 @main.command()
 @click.option('-n', '--device-name', 'device_name',
-    default=device_name_default,
+    default = LifeBaseMeter.device_name,
     help='The common name of LifeBaseMeter devices')
 #@click.option('-w', '--well-known-uuids', 'wellknown',
 #  default=wellknown_default, help='The UUID of a LifeBase device',
