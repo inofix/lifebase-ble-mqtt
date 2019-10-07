@@ -199,17 +199,21 @@ def scan(config, bleview, servicefilter, characteristicfilter,
                             d.uuid, d.handle, bytes(d.description)))
         else:
             for m in lifebasemeter.measurements.values():
-                click.echo("{" +
-                    "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, subjecttype: {4}, service: {5}, servicetype: {6}, measurmentuuid: {7}, sensortype: {8}, value: {9}, unit: {10}"
-                    .format(m.timestamp, m.geo[0], m.geo[1], m.subject,
-                    m.subjecttype, m.service, m.servicetype,
-                    m.uuid, m.sensortype, m.value, m.unit) + "}")
+                click.echo(format_measurement(m))
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
         click.echo("Error: There was a problem with the BLE connection. Please try again later.")
     except Exception as e:
         click.echo(e)
+
+def format_measurement(measurement):
+    return "{" + "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, subjecttype: {4}, service: {5}, servicetype: {6}, measurmentuuid: {7}, sensortype: {8}, value: {9}, unit: {10}".format(
+            measurement.timestamp, measurement.geo[0], measurement.geo[1],
+            measurement.subject, measurement.subjecttype, measurement.service,
+            measurement.servicetype, measurement.uuid, measurement.sensortype,
+            measurement.value, measurement.unit
+        ) + "}"
 
 async def run_scan_services_bleview(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
