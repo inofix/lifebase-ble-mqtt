@@ -24,6 +24,7 @@ class LifeBaseMeter(object):
         self.bleview = False
         self.measurements = {}
 
+# common name for our devices
 LifeBaseMeter.device_name = 'LifeBaseMeter'
 
 #TODO: read those in from a config file or some other central source
