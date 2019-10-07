@@ -37,6 +37,10 @@ LifeBaseMeter.subject_uuids = {
     "type_uuid": "54000004-e337-46ca-9690-cdd6d309e7b1"
 }
 
+LifeBaseMeter.ignore_services = [
+    "00001801-0000-1000-8000-00805f9b34fb"
+]
+
 #TODO: read those in from a config file or some other central source
 #TODO: and probably move it further down the line towards the frontend
 LifeBaseMeter.measuremnt_uuids = {
@@ -251,6 +255,8 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
             for c in subject.characteristics:
                 if c.uuid == LifeBaseMeter.subject_uuids["subject_uuid"]:
                     lifebasemeter.subject_uuid = bytes(c.obj.get("Value")).decode("utf-8")
+            for cuuid in LifeBaseMeter.ignore_services:
+                lifebasemeter.ble.services.pop(cuuid)
             for s in lifebasemeter.ble.services.values():
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
