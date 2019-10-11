@@ -8,9 +8,6 @@ from bleak import discover as bleak_discover
 from bleak import BleakClient
 from bleak import BleakError
 
-# store all available BLE devices (LifeBaseMeter objects) in here
-lifebase_devices = []
-
 class LifeBaseMeter(object):
     """The BLE device"""
     def __init__(self, mac):
@@ -127,7 +124,7 @@ pass_config = click.make_pass_decorator(Config, ensure=True)
     help='The MAC address of the BLE interface to be scanned.')
 @click.option('-n', '--device-name', 'device_name',
     default = LifeBaseMeter.device_name,
-    help='The common name of LifeBaseMeter devices')
+    help='The common name of LifeBase devices, usually this is "LifeBaseMeter" (default)')
 @click.option('-t', '--timeout', 'timeout', default=30, help=
     'Do not wait longer than this amount of seconds for devices to answer')
 @pass_config
@@ -138,13 +135,27 @@ def main(config, macs, device_name, timeout):
     config.device_name = device_name
     config.timeout = timeout
 
-async def run_discovery(lifebase_devices, device_name, timeout):
+async def run_discovery(device_list, device_name, timeout):
     """Scan for BLE devices but only consider those with a certain name."""
     async with async_timeout.timeout(timeout):
         ds = await bleak_discover()
         for d in ds:
             if d.name == device_name:
-                lifebase_devices.append(d)
+                device_list.append(d)
+
+def discover_devices(device_list, device_macs, device_name, timeout):
+    if device_macs:
+        new_list = []
+    else:
+        new_list = device_list
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(run_discovery(new_list, device_name,
+        timeout))
+    for m in device_macs:
+        for d in new_list:
+            if str(d).startswith(m):
+                device_list.append(d)
+                break
 
 @main.command()
 #@click.option('-w', '--well-known-uuids', 'wellknown',
@@ -156,18 +167,11 @@ async def run_discovery(lifebase_devices, device_name, timeout):
 def discover(config):
     """Scan the air for LifeBaseMeter devices and list them."""
     try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_discovery(lifebase_devices, config.device_name,
-            config.timeout))
-        if config.macs:
-            for d in lifebase_devices:
-                for m in config.macs:
-                    if str(d).startswith(m):
-                        click.echo(d)
-                        break
-        else:
-            for d in lifebase_devices:
-                click.echo(d)
+        device_list = []
+        discover_devices(device_list, config.macs, config.device_name,
+            config.timeout)
+        for d in device_list:
+            click.echo(d)
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
@@ -187,6 +191,8 @@ def discover(config):
 def scan(config, bleview, servicefilter, characteristicfilter,
     descriptorfilter):
     """Scan BLE devices for LifeBase parameters."""
+    if config.device_name and config.macs:
+        click.echo("Warning: --device takes precedence over --device-name")
     for m in config.macs:
         click.echo('Scanning ' + m)
         lifebasemeter = LifeBaseMeter(m)
