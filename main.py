@@ -17,7 +17,6 @@ class LifeBaseMeter(object):
         self.mac = mac
         self.ble = None
         self.is_connected = False
-        self.subject_uuid = None
         self.servicefilter = None
         self.characteristicfilter = None
         self.descriptorfilter = None
@@ -28,12 +27,13 @@ class LifeBaseMeter(object):
 LifeBaseMeter.device_name = 'LifeBaseMeter'
 
 #TODO: read those in from a config file or some other central source
+#      where the central source overrides the device's setting.
 LifeBaseMeter.subject_uuids = {
     "__init__": "54000000-e337-46ca-9690-cdd6d309e7b1",
     "subject_name": "54000001-e337-46ca-9690-cdd6d309e7b1",
     "subject_uuid": "54000002-e337-46ca-9690-cdd6d309e7b1",
-    "type_name": "54000003-e337-46ca-9690-cdd6d309e7b1",
-    "type_uuid": "54000004-e337-46ca-9690-cdd6d309e7b1"
+    "subject_type_name": "54000003-e337-46ca-9690-cdd6d309e7b1",
+    "subject_type_uuid": "54000004-e337-46ca-9690-cdd6d309e7b1"
 }
 
 LifeBaseMeter.ignore_services = [
@@ -48,8 +48,10 @@ LifeBaseMeter.measuremnt_uuids = {
 class Measurement(object):
     def __init__(self, uuid):
         self.uuid = uuid
-        self.subject = None
-        self.subjecttype = None
+        self.subject_uuid = None
+        self.subject_name = None
+        self.subject_type_uuid = None
+        self.subject_type_name = None
         self.service = None
         self.servicetype = None
         self.sensortype = None
@@ -123,13 +125,17 @@ pass_config = click.make_pass_decorator(Config, ensure=True)
 @click.group()
 @click.option('-d', '--device', 'macs', multiple=True,
     help='The MAC address of the BLE interface to be scanned.')
+@click.option('-n', '--device-name', 'device_name',
+    default = LifeBaseMeter.device_name,
+    help='The common name of LifeBaseMeter devices')
 @click.option('-t', '--timeout', 'timeout', default=30, help=
     'Do not wait longer than this amount of seconds for devices to answer')
 @pass_config
-def main(config, macs, timeout):
+def main(config, macs, device_name, timeout):
     """Scan BLE devices for LifeBase parameters and send them
         to a MQTT broker."""
     config.macs = macs
+    config.device_name = device_name
     config.timeout = timeout
 
 async def run_discovery(lifebase_devices, device_name, timeout):
@@ -141,23 +147,27 @@ async def run_discovery(lifebase_devices, device_name, timeout):
                 lifebase_devices.append(d)
 
 @main.command()
-@click.option('-n', '--device-name', 'device_name',
-    default = LifeBaseMeter.device_name,
-    help='The common name of LifeBaseMeter devices')
 #@click.option('-w', '--well-known-uuids', 'wellknown',
 #  default=wellknown_default, help='The UUID of a LifeBase device',
 #  multiple=True)
 #@click.option('-W', '--all-devices', 'all', default=False,
 #  help='Do not filter by well-known UUIDs')
 @pass_config
-def discover(config, device_name):
+def discover(config):
     """Scan the air for LifeBaseMeter devices and list them."""
     try:
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_discovery(lifebase_devices, device_name,
+        loop.run_until_complete(run_discovery(lifebase_devices, config.device_name,
             config.timeout))
-        for d in lifebase_devices:
-            click.echo(d)
+        if config.macs:
+            for d in lifebase_devices:
+                for m in config.macs:
+                    if str(d).startswith(m):
+                        click.echo(d)
+                        break
+        else:
+            for d in lifebase_devices:
+                click.echo(d)
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
@@ -198,8 +208,8 @@ def scan(config, bleview, servicefilter, characteristicfilter,
                             click.echo("\t\t\t{0} ({1}): Value: {2}".format(
                                 d.uuid, d.handle, bytes(d.description)))
             else:
-                for m in lifebasemeter.measurements.values():
-                    click.echo(format_measurement(m))
+                for measurement in lifebasemeter.measurements.values():
+                    click.echo(format_measurement(measurement))
         except asyncio.TimeoutError:
             click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
         except BleakError:
@@ -208,10 +218,12 @@ def scan(config, bleview, servicefilter, characteristicfilter,
             click.echo(e)
 
 def format_measurement(measurement):
-    return "{" + "timestamp: {0}, lat: {1}, long: {2}, subject: {3}, subjecttype: {4}, service: {5}, servicetype: {6}, measurmentuuid: {7}, sensortype: {8}, value: {9}, unit: {10}".format(
+    return "{" + "timestamp: {0}, lat: {1}, long: {2}, subject_uuid: {3}, subject_name: '{4}', subject_type_uuid: {5}, subject_type_name: '{6}', service: {7}, servicetype: {8}, measurmentuuid: {9}, sensortype: {10}, value: {11}, unit: {12}".format(
             measurement.timestamp, measurement.geo[0], measurement.geo[1],
-            measurement.subject, measurement.subjecttype, measurement.service,
-            measurement.servicetype, measurement.uuid, measurement.sensortype,
+            measurement.subject_uuid, measurement.subject_name,
+            measurement.subject_type_uuid, measurement.subject_type_name,
+            measurement.service, measurement.servicetype,
+            measurement.uuid, measurement.sensortype,
             measurement.value, measurement.unit
         ) + "}"
 
@@ -255,9 +267,19 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
         async with BleakClient(lifebasemeter.mac, loop=loop) as client:
             lifebasemeter.ble = await client.get_services()
             subject = lifebasemeter.ble.services.pop(LifeBaseMeter.subject_uuids["__init__"])
+            subject_uuid = None
+            subject_name = None
+            subject_type_uuid = None
+            subject_type_name = None
             for c in subject.characteristics:
                 if c.uuid == LifeBaseMeter.subject_uuids["subject_uuid"]:
-                    lifebasemeter.subject_uuid = bytes(c.obj.get("Value")).decode("utf-8")
+                    subject_uuid = bytes(await client.read_gatt_char(c.uuid)).decode("utf-8")
+                if c.uuid == LifeBaseMeter.subject_uuids["subject_name"]:
+                    subject_name = bytes(await client.read_gatt_char(c.uuid)).decode("utf-8")
+                if c.uuid == LifeBaseMeter.subject_uuids["subject_type_uuid"]:
+                    subject_type_uuid = bytes(await client.read_gatt_char(c.uuid)).decode("utf-8")
+                if c.uuid == LifeBaseMeter.subject_uuids["subject_type_name"]:
+                    subject_type_name = bytes(await client.read_gatt_char(c.uuid)).decode("utf-8")
             for cuuid in LifeBaseMeter.ignore_services:
                 lifebasemeter.ble.services.pop(cuuid)
             for s in lifebasemeter.ble.services.values():
@@ -266,16 +288,19 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
-                    m = Measurement(ch.uuid)
-                    lifebasemeter.measurements[ch.uuid] = m
-                    m.subject = lifebasemeter.subject_uuid
-                    m.service = s.uuid
-                    m.timestamp = int(time.time())
+                    measurement = Measurement(ch.uuid)
+                    lifebasemeter.measurements[ch.uuid] = measurement
+                    measurement.subject_uuid = subject_uuid
+                    measurement.subject_name = subject_name
+                    measurement.subject_type_uuid = subject_type_uuid
+                    measurement.subject_type_name = subject_type_name
+                    measurement.service = s.uuid
+                    measurement.timestamp = int(time.time())
                     if "read" in ch.properties:
                         try:
-                            m.value = float(bytes(await client.read_gatt_char(ch.uuid)))
+                            measurement.value = float(bytes(await client.read_gatt_char(ch.uuid)))
                         except:
-                            m.value = None
+                            measurement.value = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
@@ -313,8 +338,8 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
             click.echo("BLE Connection Error: " + m)
         except Exception as e:
             click.echo(e)
-        for mm in lifebasemeter.measurements.values():
+        for measurement in lifebasemeter.measurements.values():
             c.connect(brokerhost)
-            c.publish(LifeBaseMeter.device_name, format_measurement(mm))
+            c.publish(LifeBaseMeter.device_name, format_measurement(measurement))
 
 
