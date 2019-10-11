@@ -125,13 +125,17 @@ pass_config = click.make_pass_decorator(Config, ensure=True)
 @click.group()
 @click.option('-d', '--device', 'macs', multiple=True,
     help='The MAC address of the BLE interface to be scanned.')
+@click.option('-n', '--device-name', 'device_name',
+    default = LifeBaseMeter.device_name,
+    help='The common name of LifeBaseMeter devices')
 @click.option('-t', '--timeout', 'timeout', default=30, help=
     'Do not wait longer than this amount of seconds for devices to answer')
 @pass_config
-def main(config, macs, timeout):
+def main(config, macs, device_name, timeout):
     """Scan BLE devices for LifeBase parameters and send them
         to a MQTT broker."""
     config.macs = macs
+    config.device_name = device_name
     config.timeout = timeout
 
 async def run_discovery(lifebase_devices, device_name, timeout):
@@ -143,20 +147,17 @@ async def run_discovery(lifebase_devices, device_name, timeout):
                 lifebase_devices.append(d)
 
 @main.command()
-@click.option('-n', '--device-name', 'device_name',
-    default = LifeBaseMeter.device_name,
-    help='The common name of LifeBaseMeter devices')
 #@click.option('-w', '--well-known-uuids', 'wellknown',
 #  default=wellknown_default, help='The UUID of a LifeBase device',
 #  multiple=True)
 #@click.option('-W', '--all-devices', 'all', default=False,
 #  help='Do not filter by well-known UUIDs')
 @pass_config
-def discover(config, device_name):
+def discover(config):
     """Scan the air for LifeBaseMeter devices and list them."""
     try:
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_discovery(lifebase_devices, device_name,
+        loop.run_until_complete(run_discovery(lifebase_devices, config.device_name,
             config.timeout))
         for d in lifebase_devices:
             click.echo(d)
