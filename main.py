@@ -141,7 +141,7 @@ async def run_discovery(device_list, device_name, timeout):
         ds = await bleak_discover()
         for d in ds:
             if d.name == device_name:
-                device_list.append(d)
+                device_list.append(d.address)
 
 def discover_devices(device_list, device_macs, device_name, timeout):
     if device_macs:
@@ -153,7 +153,7 @@ def discover_devices(device_list, device_macs, device_name, timeout):
         timeout))
     for m in device_macs:
         for d in new_list:
-            if str(d).startswith(m):
+            if d == m:
                 device_list.append(d)
                 break
 
@@ -171,7 +171,7 @@ def discover(config):
         discover_devices(device_list, config.macs, config.device_name,
             config.timeout)
         for d in device_list:
-            click.echo(d)
+            click.echo(d + " " + config.device_name)
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
@@ -191,17 +191,8 @@ def discover(config):
 def scan(config, bleview, servicefilter, characteristicfilter,
     descriptorfilter):
     """Scan BLE devices for LifeBase parameters."""
-    if config.device_name and config.macs:
-        click.echo("Warning: --device takes precedence over --device-name")
     macs = []
-    if config.macs:
-        macs = config.macs
-    else:
-        device_list = []
-        discover_devices(device_list, config.macs, config.device_name,
-            config.timeout)
-        for d in device_list:
-            macs.append(d.address)
+    discover_devices(macs, config.macs, config.device_name, config.timeout)
     for m in macs:
         click.echo('Scanning ' + m)
         lifebasemeter = LifeBaseMeter(m)
@@ -340,7 +331,9 @@ def scan_services(lifebasemeter, timeout):
 def interconnect(config, servicefilter, characteristicfilter, brokerhost, brokerport):
     """Scan the BLE devices and send the data to the MQTT broker."""
     c = paho.mqtt.client.Client("LifeBase-BLE-MQTT")
-    for m in config.macs:
+    macs = []
+    discover_devices(macs, config.macs, config.device_name, config.timeout)
+    for m in macs:
         click.echo('Scanning ' + m)
         lifebasemeter = LifeBaseMeter(m)
         lifebasemeter.servicefilter = servicefilter
