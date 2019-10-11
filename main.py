@@ -159,8 +159,15 @@ def discover(config):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(run_discovery(lifebase_devices, config.device_name,
             config.timeout))
-        for d in lifebase_devices:
-            click.echo(d)
+        if config.macs:
+            for d in lifebase_devices:
+                for m in config.macs:
+                    if str(d).startswith(m):
+                        click.echo(d)
+                        break
+        else:
+            for d in lifebase_devices:
+                click.echo(d)
     except asyncio.TimeoutError:
         click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
     except BleakError:
