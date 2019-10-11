@@ -347,7 +347,13 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
         except Exception as e:
             click.echo(e)
         for measurement in lifebasemeter.measurements.values():
+            topics = []
+            for a in LifeBaseMeter.device_name, measurement.subject_type_name, measurement.subject_name:
+                if a:
+                    topics.append(''.join(e for e in a if e.isalnum()))
+                else:
+                    topics.append('Unknown')
             c.connect(brokerhost)
-            c.publish(LifeBaseMeter.device_name, format_measurement(measurement))
+            c.publish("/".join(topics), format_measurement(measurement))
 
 
