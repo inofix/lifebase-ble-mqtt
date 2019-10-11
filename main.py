@@ -193,7 +193,16 @@ def scan(config, bleview, servicefilter, characteristicfilter,
     """Scan BLE devices for LifeBase parameters."""
     if config.device_name and config.macs:
         click.echo("Warning: --device takes precedence over --device-name")
-    for m in config.macs:
+    macs = []
+    if config.macs:
+        macs = config.macs
+    else:
+        device_list = []
+        discover_devices(device_list, config.macs, config.device_name,
+            config.timeout)
+        for d in device_list:
+            macs.append(d.address)
+    for m in macs:
         click.echo('Scanning ' + m)
         lifebasemeter = LifeBaseMeter(m)
         lifebasemeter.bleview = bleview
