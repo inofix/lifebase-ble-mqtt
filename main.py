@@ -224,14 +224,14 @@ def scan(config, bleview, servicefilter, characteristicfilter,
             click.echo(e)
 
 def format_measurement(measurement):
-    return "{" + "timestamp: {0}, lat: {1}, long: {2}, subject_uuid: {3}, subject_name: '{4}', subject_type_uuid: {5}, subject_type_name: '{6}', service: {7}, servicetype: {8}, measurmentuuid: {9}, sensortype: {10}, value: {11}, unit: {12}".format(
+    return '{' + '"timestamp": {0}, "lat": {1}, "long": {2}, "subject_uuid": {3}, "subject_name": "{4}", "subject_type_uuid": {5}, "subject_type_name": "{6}", "service": {7}, "servicetype": {8}, "measurmentuuid": {9}, "sensortype": {10}, "value": {11}, "unit": {12}'.format(
             measurement.timestamp, measurement.geo[0], measurement.geo[1],
             measurement.subject_uuid, measurement.subject_name,
             measurement.subject_type_uuid, measurement.subject_type_name,
             measurement.service, measurement.servicetype,
             measurement.uuid, measurement.sensortype,
             measurement.value, measurement.unit
-        ) + "}"
+        ) + '}'
 
 async def run_scan_services_bleview(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
