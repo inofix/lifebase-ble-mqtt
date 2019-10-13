@@ -53,12 +53,6 @@ class Service(object):
         self.characteristics = {}
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[5].replace('service', '0x')
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(h, 16)
     def add_characteristic(self, characteristic):
         self.characteristics[characteristic.uuid] = characteristic
 
@@ -74,12 +68,6 @@ class Characteristic(object):
         self.descriptors = {}
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[6].replace('char', '0x')
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(h, 16)
     def add_descriptor(self, descriptor):
         self.descriptors[descriptor.uuid] = descriptor
 
@@ -91,12 +79,6 @@ class Descriptor(object):
         self.description = ""
     def set_handle(self, handle):
         self.handle = hex(handle)
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(self.handle, 16)
 
 class Config(object):
     """Click CLI configuration"""
