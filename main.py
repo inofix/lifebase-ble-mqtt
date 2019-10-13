@@ -1,6 +1,7 @@
 import asyncio
 import async_timeout
 import click
+import json
 import logging
 import paho.mqtt.client
 import time
@@ -18,7 +19,8 @@ class LifeBaseMeter(object):
         self.characteristicfilter = None
         self.descriptorfilter = None
         self.bleview = False
-        self.measurements = {}
+        self.measurements = []
+        self.ble_services = {}
 
 # common name for our devices
 LifeBaseMeter.device_name = 'LifeBaseMeter'
@@ -41,22 +43,6 @@ LifeBaseMeter.ignore_services = [
 #TODO: and probably move it further down the line towards the frontend
 LifeBaseMeter.measuremnt_uuids = {
 }
-
-class Measurement(object):
-    def __init__(self, uuid):
-        self.uuid = uuid
-        self.subject_uuid = None
-        self.subject_name = None
-        self.subject_type_uuid = None
-        self.subject_type_name = None
-        self.service = None
-        self.servicetype = None
-        self.sensortype = None
-        self.timestamp = None
-        self.geo = [None, None]
-        self.now = None
-        self.value = None
-        self.unit = None
 
 class Service(object):
     """Offline abstraction for a service"""
@@ -203,7 +189,7 @@ def scan(config, bleview, servicefilter, characteristicfilter,
         try:
             scan_services(lifebasemeter, config.timeout)
             if lifebasemeter.bleview:
-                for s in lifebasemeter.measurements.values():
+                for s in lifebasemeter.ble_services.values():
                     click.echo("\t{0} ({1}): {2}".format(s.uuid, s.handle,
                             s.description))
                     for ch in s.characteristics.values():
@@ -214,7 +200,7 @@ def scan(config, bleview, servicefilter, characteristicfilter,
                             click.echo("\t\t\t{0} ({1}): Value: {2}".format(
                                 d.uuid, d.handle, bytes(d.description)))
             else:
-                for measurement in lifebasemeter.measurements.values():
+                for measurement in lifebasemeter.measurements:
                     click.echo(format_measurement(measurement))
         except asyncio.TimeoutError:
             click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
@@ -224,14 +210,7 @@ def scan(config, bleview, servicefilter, characteristicfilter,
             click.echo(e)
 
 def format_measurement(measurement):
-    return '{' + '"timestamp": {0}, "lat": {1}, "long": {2}, "subject_uuid": {3}, "subject_name": "{4}", "subject_type_uuid": {5}, "subject_type_name": "{6}", "service": {7}, "servicetype": {8}, "measurmentuuid": {9}, "sensortype": {10}, "value": {11}, "unit": {12}'.format(
-            measurement.timestamp, measurement.geo[0], measurement.geo[1],
-            measurement.subject_uuid, measurement.subject_name,
-            measurement.subject_type_uuid, measurement.subject_type_name,
-            measurement.service, measurement.servicetype,
-            measurement.uuid, measurement.sensortype,
-            measurement.value, measurement.unit
-        ) + '}'
+    return json.dumps(measurement)
 
 async def run_scan_services_bleview(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
@@ -241,7 +220,7 @@ async def run_scan_services_bleview(lifebasemeter, loop, timeout):
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
                 service = Service(s.uuid)
-                lifebasemeter.measurements[s.uuid] = service
+                lifebasemeter.ble_services[s.uuid] = service
                 service.set_handle_from_path(s.path)
                 service.description = s.description
                 for ch in s.characteristics:
@@ -294,19 +273,21 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
-                    measurement = Measurement(ch.uuid)
-                    lifebasemeter.measurements[ch.uuid] = measurement
-                    measurement.subject_uuid = subject_uuid
-                    measurement.subject_name = subject_name
-                    measurement.subject_type_uuid = subject_type_uuid
-                    measurement.subject_type_name = subject_type_name
-                    measurement.service = s.uuid
-                    measurement.timestamp = int(time.time())
+                    measurement = {
+                        "uuid": ch.uuid,
+                        "subject_uuid": subject_uuid,
+                        "subject_name": subject_name,
+                        "subject_type_uuid": subject_type_uuid,
+                        "subject_type_name": subject_type_name,
+                        "service": s.uuid,
+                        "timestamp": int(time.time())
+                    }
+                    lifebasemeter.measurements.append(measurement)
                     if "read" in ch.properties:
                         try:
-                            measurement.value = float(bytes(await client.read_gatt_char(ch.uuid)))
+                            measurement["value"] = float(bytes(await client.read_gatt_char(ch.uuid)))
                         except:
-                            measurement.value = None
+                            measurement["value"] = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
@@ -346,9 +327,9 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
             click.echo("BLE Connection Error: " + m)
         except Exception as e:
             click.echo(e)
-        for measurement in lifebasemeter.measurements.values():
+        for measurement in lifebasemeter.measurements:
             topics = []
-            for a in LifeBaseMeter.device_name, measurement.subject_type_name, measurement.subject_name:
+            for a in LifeBaseMeter.device_name, measurement["subject_type_name"], measurement["subject_name"]:
                 if a:
                     topics.append(''.join(e for e in a if e.isalnum()))
                 else:
