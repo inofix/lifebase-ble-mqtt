@@ -1,6 +1,7 @@
 import asyncio
 import async_timeout
 import click
+import json
 import logging
 import paho.mqtt.client
 import time
@@ -18,7 +19,8 @@ class LifeBaseMeter(object):
         self.characteristicfilter = None
         self.descriptorfilter = None
         self.bleview = False
-        self.measurements = {}
+        self.measurements = []
+        self.ble_services = []
 
 # common name for our devices
 LifeBaseMeter.device_name = 'LifeBaseMeter'
@@ -42,39 +44,15 @@ LifeBaseMeter.ignore_services = [
 LifeBaseMeter.measuremnt_uuids = {
 }
 
-class Measurement(object):
-    def __init__(self, uuid):
-        self.uuid = uuid
-        self.subject_uuid = None
-        self.subject_name = None
-        self.subject_type_uuid = None
-        self.subject_type_name = None
-        self.service = None
-        self.servicetype = None
-        self.sensortype = None
-        self.timestamp = None
-        self.geo = [None, None]
-        self.now = None
-        self.value = None
-        self.unit = None
-
 class Service(object):
     """Offline abstraction for a service"""
     def __init__(self, uuid):
         self.uuid = uuid
         self.handle = None
         self.description = ""
-        self.characteristics = {}
+        self.characteristics = []
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[5].replace('service', '0x')
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(h, 16)
-    def add_characteristic(self, characteristic):
-        self.characteristics[characteristic.uuid] = characteristic
 
 class Characteristic(object):
     """Offline abstraction for a characteristic
@@ -85,17 +63,9 @@ class Characteristic(object):
         self.value = None
         self.properties = []
         self.description = None
-        self.descriptors = {}
+        self.descriptors = []
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[6].replace('char', '0x')
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(h, 16)
-    def add_descriptor(self, descriptor):
-        self.descriptors[descriptor.uuid] = descriptor
 
 class Descriptor(object):
     """Offline abstraction for a descriptor"""
@@ -105,12 +75,6 @@ class Descriptor(object):
         self.description = ""
     def set_handle(self, handle):
         self.handle = hex(handle)
-    def get_handle(self, as_hex=True):
-        """Return the BLE handle either in 'hex' or 'dec'"""
-        if as_hex:
-            return self.handle
-        else:
-            return int(self.handle, 16)
 
 class Config(object):
     """Click CLI configuration"""
@@ -203,18 +167,18 @@ def scan(config, bleview, servicefilter, characteristicfilter,
         try:
             scan_services(lifebasemeter, config.timeout)
             if lifebasemeter.bleview:
-                for s in lifebasemeter.measurements.values():
+                for s in lifebasemeter.ble_services:
                     click.echo("\t{0} ({1}): {2}".format(s.uuid, s.handle,
                             s.description))
-                    for ch in s.characteristics.values():
+                    for ch in s.characteristics:
                         click.echo("\t\t{0} ({1}): [{2}]; Name: {3}; Value: {4}".
                             format(ch.uuid, ch.handle, "|".join(ch.properties),
                             ch.description, ch.value))
-                        for d in ch.descriptors.values():
+                        for d in ch.descriptors:
                             click.echo("\t\t\t{0} ({1}): Value: {2}".format(
                                 d.uuid, d.handle, bytes(d.description)))
             else:
-                for measurement in lifebasemeter.measurements.values():
+                for measurement in lifebasemeter.measurements:
                     click.echo(format_measurement(measurement))
         except asyncio.TimeoutError:
             click.echo("Error: The timeout was reached, you may want to specify it explicitly with --timeout timeout")
@@ -224,14 +188,7 @@ def scan(config, bleview, servicefilter, characteristicfilter,
             click.echo(e)
 
 def format_measurement(measurement):
-    return '{' + '"timestamp": {0}, "lat": {1}, "long": {2}, "subject_uuid": {3}, "subject_name": "{4}", "subject_type_uuid": {5}, "subject_type_name": "{6}", "service": {7}, "servicetype": {8}, "measurmentuuid": {9}, "sensortype": {10}, "value": {11}, "unit": {12}'.format(
-            measurement.timestamp, measurement.geo[0], measurement.geo[1],
-            measurement.subject_uuid, measurement.subject_name,
-            measurement.subject_type_uuid, measurement.subject_type_name,
-            measurement.service, measurement.servicetype,
-            measurement.uuid, measurement.sensortype,
-            measurement.value, measurement.unit
-        ) + '}'
+    return json.dumps(measurement)
 
 async def run_scan_services_bleview(lifebasemeter, loop, timeout):
     async with async_timeout.timeout(timeout):
@@ -241,14 +198,14 @@ async def run_scan_services_bleview(lifebasemeter, loop, timeout):
                 if lifebasemeter.servicefilter and s.uuid not in lifebasemeter.servicefilter:
                     continue
                 service = Service(s.uuid)
-                lifebasemeter.measurements[s.uuid] = service
+                lifebasemeter.ble_services.append(service)
                 service.set_handle_from_path(s.path)
                 service.description = s.description
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
                     cc = Characteristic(ch.uuid)
-                    service.characteristics[ch.uuid] = cc
+                    service.characteristics.append(cc)
                     cc.set_handle_from_path(ch.path)
                     cc.description = ch.description
                     cc.properties = ch.properties
@@ -261,7 +218,7 @@ async def run_scan_services_bleview(lifebasemeter, loop, timeout):
                         if lifebasemeter.descriptorfilter and d.uuid not in lifebasemeter.descriptorfilter:
                             continue
                         descriptor = Descriptor(d.uuid)
-                        cc.descriptors[d.uuid] = descriptor
+                        cc.descriptors.append(descriptor)
                         descriptor.set_handle(d.handle)
                         try:
                             descriptor.description = await client.read_gatt_descriptor(d.handle)
@@ -294,19 +251,21 @@ async def run_scan_services_measurments(lifebasemeter, loop, timeout):
                 for ch in s.characteristics:
                     if lifebasemeter.characteristicfilter and ch.uuid not in lifebasemeter.characteristicfilter:
                         continue
-                    measurement = Measurement(ch.uuid)
-                    lifebasemeter.measurements[ch.uuid] = measurement
-                    measurement.subject_uuid = subject_uuid
-                    measurement.subject_name = subject_name
-                    measurement.subject_type_uuid = subject_type_uuid
-                    measurement.subject_type_name = subject_type_name
-                    measurement.service = s.uuid
-                    measurement.timestamp = int(time.time())
+                    measurement = {
+                        "uuid": ch.uuid,
+                        "subject_uuid": subject_uuid,
+                        "subject_name": subject_name,
+                        "subject_type_uuid": subject_type_uuid,
+                        "subject_type_name": subject_type_name,
+                        "service": s.uuid,
+                        "timestamp": int(time.time())
+                    }
+                    lifebasemeter.measurements.append(measurement)
                     if "read" in ch.properties:
                         try:
-                            measurement.value = float(bytes(await client.read_gatt_char(ch.uuid)))
+                            measurement["value"] = float(bytes(await client.read_gatt_char(ch.uuid)))
                         except:
-                            measurement.value = None
+                            measurement["value"] = None
 
 def scan_services(lifebasemeter, timeout):
     loop = asyncio.get_event_loop()
@@ -346,9 +305,9 @@ def interconnect(config, servicefilter, characteristicfilter, brokerhost, broker
             click.echo("BLE Connection Error: " + m)
         except Exception as e:
             click.echo(e)
-        for measurement in lifebasemeter.measurements.values():
+        for measurement in lifebasemeter.measurements:
             topics = []
-            for a in LifeBaseMeter.device_name, measurement.subject_type_name, measurement.subject_name:
+            for a in LifeBaseMeter.device_name, measurement["subject_type_name"], measurement["subject_name"]:
                 if a:
                     topics.append(''.join(e for e in a if e.isalnum()))
                 else:
