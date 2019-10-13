@@ -53,8 +53,6 @@ class Service(object):
         self.characteristics = {}
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[5].replace('service', '0x')
-    def add_characteristic(self, characteristic):
-        self.characteristics[characteristic.uuid] = characteristic
 
 class Characteristic(object):
     """Offline abstraction for a characteristic
@@ -68,8 +66,6 @@ class Characteristic(object):
         self.descriptors = {}
     def set_handle_from_path(self, path):
         self.handle = path.split('/')[6].replace('char', '0x')
-    def add_descriptor(self, descriptor):
-        self.descriptors[descriptor.uuid] = descriptor
 
 class Descriptor(object):
     """Offline abstraction for a descriptor"""
